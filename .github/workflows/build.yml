@@ -12,14 +12,15 @@ permissions:
 jobs:
   build:
     name: Build Sely Android APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check ZIP file
+      - name: Check ZIP
         run: |
+          echo "Files in repository:"
           ls -lah
           test -f SelyApp-redesigned.zip
 
@@ -27,8 +28,9 @@ jobs:
         run: |
           rm -rf project
           mkdir project
-          unzip -o SelyApp-redesigned.zip -d project
-          echo "Extracted files:"
+          unzip -q -o SelyApp-redesigned.zip -d project
+
+          echo "Extracted project:"
           find project -maxdepth 3 -type f | sort
 
       - name: Set up JDK 17
@@ -37,18 +39,20 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
+      - name: Configure Android SDK
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROID_HOME=$ANDROID_HOME"
 
-      - name: Set up Gradle 8.2.1
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Install Android SDK 34
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-34"
+          sdkmanager "build-tools;34.0.0"
+
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2.1'
@@ -56,28 +60,30 @@ jobs:
       - name: Enable AndroidX
         working-directory: project
         run: |
-          printf "android.useAndroidX=true\nandroid.enableJetifier=true\n" > gradle.properties
+          cat > gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
 
-      - name: Check project
+      - name: Check Gradle project
         working-directory: project
         run: |
-          echo "Project files:"
+          echo "Root:"
           ls -lah
-          echo "App files:"
+          echo "App:"
           ls -lah app
 
-      - name: Build debug APK
+      - name: Build Sely APK
         working-directory: project
         run: |
-          gradle --version
-          gradle assembleDebug --stacktrace
+          gradle --no-daemon assembleDebug --stacktrace
 
-      - name: Verify APK
+      - name: Check APK
         run: |
           test -f project/app/build/outputs/apk/debug/app-debug.apk
           ls -lh project/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload APK
+      - name: Upload Sely APK
         uses: actions/upload-artifact@v4
         with:
           name: Sely-APK
@@ -90,6 +96,5 @@ jobs:
           tag_name: sely-build-${{ github.run_number }}
           name: Sely APK Build ${{ github.run_number }}
           files: project/app/build/outputs/apk/debug/app-debug.apk
-          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
